@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111418">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Auto-Lernen">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Auto-Lernen</title>
+<style>
+  :root {
+    --bg: #111418; --panel: #1b2027; --text: #eef1f4; --muted: #9aa4af;
+    --accent: #3fa7ff; --ok: #3ecf8e; --bad: #ff6b6b; --line: #2a313a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  #big { width: 100%; min-height: 34vh; border: 0; border-radius: 24px; font-size: 34px;
+    font-weight: 700; color: #fff; background: var(--accent); cursor: pointer; }
+  #big.running { background: #e0533d; }
+  #big:disabled { background: #39424d; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 14px 16px; margin-top: 14px; }
+  .label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  #status { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  #question { font-size: 22px; margin-top: 6px; white-space: pre-wrap; }
+  #heard { color: var(--muted); margin-top: 8px; min-height: 1.4em; }
+  #result.ok { color: var(--ok); } #result.bad { color: var(--bad); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .row label { flex: 1 1 140px; font-size: 15px; color: var(--muted); }
+  select, input[type=number] { width: 100%; font-size: 17px; padding: 8px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  .stats { display: flex; gap: 10px; text-align: center; }
+  .stats div { flex: 1; background: var(--bg); border-radius: 12px; padding: 8px 4px; }
+  .stats b { display: block; font-size: 24px; }
+  .warn { color: #ffc857; font-size: 15px; }
+  details { margin-top: 14px; color: var(--muted); font-size: 15px; }
+  details li { margin: 4px 0; }
+  .small { font-size: 14px; }
+  button.link { background: none; border: 0; color: var(--muted); text-decoration: underline;
+    font-size: 14px; padding: 0; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Auto-Lernen</h1>
+  <div class="sub" id="meta"></div>
+
+  <button id="big" type="button">Start</button>
+
+  <div class="panel">
+    <div class="label">Status</div>
+    <div id="status">Bereit. Tippe auf Start, bevor du losfährst.</div>
+    <div id="question"></div>
+    <div id="heard"></div>
+    <div id="result"></div>
+  </div>
+
+  <div class="panel">
+    <div class="stats">
+      <div><b id="sDue">0</b><span class="small">fällig</span></div>
+      <div><b id="sOk">0</b><span class="small">gewusst</span></div>
+      <div><b id="sBad">0</b><span class="small">nochmal</span></div>
+    </div>
+    <div class="row">
+      <label>Fach<select id="subject"></select></label>
+      <label>Karten pro Runde<input id="limit" type="number" min="1" max="200" value="20"></label>
+    </div>
+    <div class="row">
+      <label>Modus<select id="mode">
+        <option value="mic">Mit Mikro antworten</option>
+        <option value="listen">Nur zuhören (Frage, Pause, Antwort)</option>
+      </select></label>
+      <label>Denkpause (Sekunden)<input id="pause" type="number" min="2" max="30" value="6"></label>
+    </div>
+    <div id="support" class="warn"></div>
+    <div class="row">
+      <label>Karten laden (karten.json vom PC)<input id="file" type="file" accept=".json,application/json"></label>
+    </div>
+  </div>
+
+  <details>
+    <summary>Sprachbefehle und Tipps</summary>
+    <ul>
+      <li><b>Antwort sagen:</b> einfach nach der Frage losreden.</li>
+      <li><b>„Weiß nicht“</b> oder <b>„Lösung“</b>: Antwort hören, Karte kommt wieder.</li>
+      <li><b>„Wiederholen“</b>: Frage nochmal vorlesen.</li>
+      <li><b>„Weiter“</b> oder <b>„Überspringen“</b>: nächste Karte ohne Bewertung.</li>
+      <li><b>„Stopp“</b> oder <b>„Pause“</b>: anhalten, mit Start geht es weiter.</li>
+      <li>Bei „Hast du es gewusst?“: <b>„Ja“</b> oder <b>„Nein“</b>.</li>
+      <li>Lenkrad- oder Kopfhörertasten (falls dein Handy sie weitergibt): Play/Pause hält an, Weiter überspringt, Zurück wiederholt.</li>
+      <li>Der Bildschirm bleibt an, solange die Runde läuft. Handy in die Halterung, Start vor der Fahrt drücken.</li>
+    </ul>
+    <button class="link" id="reset" type="button">Lernstand auf diesem Handy zurücksetzen</button>
+  </details>
+</main>
+
+<script>
+/* Von der Lernzentrale eingesetzt. Nicht von Hand ändern. */
+const EMBEDDED = /*__KARTEN__*/{"generated": "", "cards": []}/*__ENDE__*/;
+
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const STORE = "auto-lernen-v1";
+  // Karten: eingebaut (Datei vom PC) oder auf diesem Handy geladen (karten.json, z. B. aus iCloud Drive)
+  let DATA = EMBEDDED;
+  if (!EMBEDDED.cards.length) {
+    try { const c = JSON.parse(localStorage.getItem(STORE + "-cards") || "null"); if (c && Array.isArray(c.cards)) DATA = c; } catch (e) {}
+  }
+  const INTERVALS = [0, 1, 3, 7, 14, 30]; // Tage je Fach (Leitner), Index = Box
+
+  // ---------- Lernstand (nur auf diesem Handy) ----------
+  let progress = {};
+  try { progress = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { progress = {}; }
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(progress)); } catch (e) {} };
+  const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const DAY = 86400000;
+
+  function grade(card, knewIt) {
+    const p = progress[card.id] || { box: 0, due: 0 };
+    p.box = knewIt ? Math.min(p.box + 1, INTERVALS.length - 1) : 0;
+    p.due = today() + INTERVALS[p.box] * DAY;
+    p.seen = Date.now();
+    progress[card.id] = p;
+    save();
+  }
+  const isDue = (c) => !progress[c.id] || progress[c.id].due <= today();
+
+  function dueCards() {
+    const subj = $("subject").value;
+    return DATA.cards
+      .filter((c) => (subj === "*" || c.subject === subj) && isDue(c))
+      .sort((a, b) => ((progress[a.id] || {}).box ?? -1) - ((progress[b.id] || {}).box ?? -1));
+  }
+
+  // ---------- Antwort prüfen ----------
+  const STOP = new Set(("der die das den dem des ein eine einer eines einem einen und oder ist sind wird werden " +
+    "mit von zu zum zur im in an am auf aus bei für als wie auch nicht nur noch so es er sie man dass " +
+    "durch über unter wenn dann also bzw usw sowie je pro").split(" "));
+  const norm = (s) => s.toLowerCase().replace(/ß/g, "ss").replace(/[^\p{L}\p{N}\s,.]/gu, " ")
+    .replace(/(\d)[,.](\d)/g, "$1.$2").replace(/[,]/g, " ").replace(/\.(?!\d)/g, " ").replace(/\s+/g, " ").trim();
+  const words = (s) => norm(s).split(" ").filter(Boolean);
+  const keywords = (s) => [...new Set(words(s).filter((w) => /\d/.test(w) || (w.length >= 3 && !STOP.has(w))))];
+  const stem = (w) => w.slice(0, Math.max(4, Math.min(6, w.length - 1)));
+
+  function matchScore(heard, card) {
+    let want = keywords(card.answer_speech + " " + card.answer);
+    // Kurze Antworten und Formeln: auch einzelne Buchstaben zählen (U, R, I)
+    if (want.length < 3) want = [...new Set(words(card.answer_speech).filter((w) => !STOP.has(w)))];
+    const keys = [...new Set(want.map((w) => /\d/.test(w) ? w : stem(w)))];
+    if (!keys.length) return 0;
+    const got = words(heard);
+    const hit = (k) => got.some((g) => /\d/.test(k) ? g === k : g.startsWith(k) || k.startsWith(stem(g)));
+    const numbers = keys.filter((k) => /\d/.test(k));
+    if (numbers.some((n) => !hit(n))) return 0; // Zahlen müssen exakt stimmen
+    const score = keys.filter(hit).length / keys.length;
+    return score;
+  }
+
+  const said = (text, list) => list.some((w) => new RegExp("(^|\\s)" + w + "($|\\s)").test(norm(text)));
+  const CMD = {
+    stop: ["stopp", "stop", "pause", "anhalten", "aufhören"],
+    repeat: ["wiederholen", "wiederhole", "nochmal vorlesen", "wie bitte", "noch einmal vorlesen"],
+    skip: ["weiter", "überspringen", "nächste", "nächste karte", "skip"],
+    dunno: ["weiss nicht", "weiss ich nicht", "keine ahnung", "lösung", "auflösen", "auflösung", "sag es mir"],
+    yes: ["ja", "jawohl", "gewusst", "richtig", "stimmt", "genau", "jo", "jep"],
+    no: ["nein", "nö", "nee", "falsch", "nicht gewusst", "nochmal", "leider nicht"],
+  };
+  // Ganze Antwort ist ein Befehl (nicht "weiter" mitten in einer Antwort).
+  const isCmd = (text, list) => words(text).length <= 4 && said(text, list);
+
+  // ---------- Sprache ----------
+  const synth = window.speechSynthesis;
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let voice = null;
+  function pickVoice() {
+    const vs = synth ? synth.getVoices() : [];
+    voice = vs.find((v) => /^de(-|_)?(AT)/i.test(v.lang)) || vs.find((v) => /^de/i.test(v.lang)) || null;
+  }
+  if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
+
+  let runId = 0;          // jede neue Runde / Pause erhöht das; alte Abläufe brechen ab
+  let currentRec = null;
+  class Stopped extends Error {}
+  const check = (id) => { if (id !== runId) throw new Stopped(); };
+
+  function speak(text, id) {
+    return new Promise((resolve) => {
+      check(id);
+      if (!synth) return resolve();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "de-DE"; if (voice) u.voice = voice; u.rate = 1.0;
+      let done = false;
+      const end = () => { if (!done) { done = true; clearTimeout(guard); resolve(); } };
+      // Sicherheitsnetz: manche Handys melden das Ende nie
+      const guard = setTimeout(end, 2500 + text.length * 120);
+      u.onend = end; u.onerror = end;
+      synth.speak(u);
+    }).then(() => check(id));
+  }
+
+  function wait(ms, id) { return new Promise((r) => setTimeout(r, ms)).then(() => check(id)); }
+
+  function listen(id, ms = 9000) {
+    return new Promise((resolve) => {
+      check(id);
+      if (!Rec) return resolve("");
+      const rec = new Rec();
+      currentRec = rec;
+      rec.lang = "de-DE"; rec.interimResults = false; rec.maxAlternatives = 3; rec.continuous = false;
+      let text = "", done = false;
+      const end = () => { if (!done) { done = true; clearTimeout(guard); currentRec = null; resolve(text); } };
+      const guard = setTimeout(() => { try { rec.stop(); } catch (e) {} setTimeout(end, 800); }, ms);
+      rec.onresult = (ev) => {
+        const alts = [];
+        for (const r of ev.results) for (const a of r) alts.push(a.transcript);
+        text = alts.join(" | ");
+      };
+      rec.onerror = (ev) => {
+        if (ev.error === "not-allowed" || ev.error === "service-not-allowed") micBlocked = true;
+        end();
+      };
+      rec.onend = end;
+      setStatus("Ich höre zu …");
+      try { rec.start(); } catch (e) { end(); }
+    }).then((t) => { check(id); return t; });
+  }
+  let micBlocked = false;
+
+  // ---------- Anzeige ----------
+  const setStatus = (t) => { $("status").textContent = t; };
+  const show = (q) => { $("question").textContent = q || ""; $("heard").textContent = ""; setResult(""); };
+  const setHeard = (t) => { $("heard").textContent = t ? "Gehört: " + t.split(" | ")[0] : ""; };
+  function setResult(t, cls) { const r = $("result"); r.textContent = t; r.className = cls || ""; }
+  let ok = 0, bad = 0;
+  function updateStats() { $("sDue").textContent = dueCards().length; $("sOk").textContent = ok; $("sBad").textContent = bad; }
+
+  // ---------- Bildschirm an lassen + Medientasten ----------
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && "wakeLock" in navigator && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch (e) { /* nicht schlimm */ }
+  }
+  document.addEventListener("visibilitychange", () => { if (running && document.visibilityState === "visible") keepAwake(true); });
+
+  let media = null;
+  function setupMediaKeys() {
+    if (!("mediaSession" in navigator) || media) return;
+    // Leises Audio, damit das Handy Lenkrad-/Kopfhörertasten an diese Seite schickt
+    const rate = 8000, n = rate; const buf = new ArrayBuffer(44 + n); const v = new DataView(buf);
+    const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, "RIFF"); v.setUint32(4, 36 + n, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate, true);
+    v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, "data"); v.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+    media = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/wav" })));
+    media.loop = true; media.volume = 0.01;
+    navigator.mediaSession.metadata = new MediaMetadata({ title: "Auto-Lernen", artist: "Lernzentrale" });
+    navigator.mediaSession.setActionHandler("play", () => toggle());
+    navigator.mediaSession.setActionHandler("pause", () => toggle());
+    navigator.mediaSession.setActionHandler("nexttrack", () => { pendingAction = "skip"; interrupt(); });
+    navigator.mediaSession.setActionHandler("previoustrack", () => { pendingAction = "repeat"; interrupt(); });
+  }
+  let pendingAction = null;
+  function interrupt() { // aktuelle Ausgabe/Zuhören abbrechen, Ablauf reagiert auf pendingAction
+    if (synth) synth.cancel();
+    if (currentRec) { try { currentRec.abort(); } catch (e) {} }
+  }
+
+  // ---------- Ablauf ----------
+  let running = false;
+
+  async function askCard(card, id) {
+    const mode = $("mode").value;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      show(card.question);
+      setStatus("Frage" + (card.subject ? " (" + card.subject + ")" : ""));
+      pendingAction = null;
+      await speak(card.question_speech, id);
+
+      if (mode === "listen") {
+        await wait(Math.max(2, +$("pause").value || 6) * 1000, id);
+        if (pendingAction === "repeat") continue;
+        if (pendingAction === "skip") return "skip";
+        await speak("Antwort: " + card.answer_speech, id);
+        setResult("Antwort: " + card.answer);
+        await wait(1200, id);
+        return "seen";
+      }
+
+      let heard = await listen(id);
+      if (pendingAction === "repeat") continue;
+      if (pendingAction === "skip") return "skip";
+      if (!heard.trim()) {
+        await speak("Ich habe nichts gehört. Sag deine Antwort, oder: weiß nicht.", id);
+        heard = await listen(id);
+        if (pendingAction === "repeat") continue;
+        if (pendingAction === "skip") return "skip";
+      }
+      setHeard(heard);
+      if (isCmd(heard, CMD.stop)) return "stop";
+      if (isCmd(heard, CMD.repeat)) continue;
+      if (isCmd(heard, CMD.skip)) return "skip";
+
+      if (heard.trim() && !isCmd(heard, CMD.dunno)) {
+        const best = Math.max(...heard.split(" | ").map((h) => matchScore(h, card)));
+        if (best >= 0.7) {
+          setResult("Richtig: " + card.answer, "ok");
+          await speak("Richtig! " + card.answer_speech, id);
+          return true;
+        }
+        setResult("Antwort: " + card.answer);
+        await speak("Die Antwort ist: " + card.answer_speech + ". Hast du es gewusst?", id);
+        const yn = await listen(id, 6000);
+        setHeard(yn);
+        if (isCmd(yn, CMD.stop)) return "stop";
+        const knew = said(yn, CMD.yes) && !said(yn, CMD.no);
+        setResult((knew ? "Gewusst: " : "Kommt wieder: ") + card.answer, knew ? "ok" : "bad");
+        await speak(knew ? "Gut." : "Okay, die kommt wieder.", id);
+        return knew;
+      }
+      setResult("Antwort: " + card.answer, "bad");
+      await speak("Die Antwort ist: " + card.answer_speech, id);
+      return false;
+    }
+    return "skip";
+  }
+
+  async function run() {
+    const id = ++runId;
+    running = true;
+    $("big").textContent = "Pause"; $("big").classList.add("running");
+    keepAwake(true);
+    if (media) media.play().catch(() => {});
+    try {
+      const cards = dueCards().slice(0, Math.max(1, +$("limit").value || 20));
+      if (!cards.length) {
+        show(""); setStatus("Keine Karten fällig. Super!");
+        await speak("Für heute sind keine Karten fällig. Gute Fahrt!", id);
+        return stop();
+      }
+      if ($("mode").value === "mic" && !Rec) {
+        await speak("Spracheingabe geht in diesem Browser nicht. Ich lese dir Frage und Antwort vor.", id);
+        $("mode").value = "listen";
+      }
+      await speak(`Los geht's mit ${cards.length} ${cards.length === 1 ? "Karte" : "Karten"}.`, id);
+      for (const card of cards) {
+        const r = await askCard(card, id);
+        if (micBlocked) {
+          micBlocked = false; $("mode").value = "listen";
+          await speak("Ich darf das Mikrofon nicht benutzen. Ich wechsle ins Zuhören.", id);
+        }
+        if (r === "stop") { setStatus("Angehalten."); return stop(true); }
+        if (r === true) { ok++; grade(card, true); }
+        else if (r === false) { bad++; grade(card, false); }
+        else if (r === "seen") { grade(card, true); ok++; }
+        updateStats();
+        await wait(500, id);
+      }
+      show("");
+      setStatus(`Runde fertig: ${ok} gewusst, ${bad} nochmal.`);
+      await speak(`Runde fertig. ${ok} gewusst, ${bad} ${bad === 1 ? "kommt" : "kommen"} wieder.`, id);
+      stop();
+    } catch (e) {
+      if (!(e instanceof Stopped)) { console.error(e); setStatus("Fehler: " + e.message); stop(); }
+    }
+  }
+
+  function stop(keepStatus) {
+    runId++;
+    running = false;
+    interrupt();
+    keepAwake(false);
+    if (media) media.pause();
+    $("big").textContent = "Start"; $("big").classList.remove("running");
+    if (!keepStatus && !$("status").textContent.startsWith("Runde fertig") &&
+        !$("status").textContent.startsWith("Keine")) setStatus("Pausiert. Start macht weiter.");
+    updateStats();
+  }
+
+  function toggle() {
+    if (running) { stop(); if (synth) synth.speak(new SpeechSynthesisUtterance("Pause.")); }
+    else { setupMediaKeys(); run(); }
+  }
+
+  // ---------- Start ----------
+  $("file").onchange = async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data || !Array.isArray(data.cards) || !data.cards.every((c) => c.id && c.question && c.answer))
+        throw new Error("Das ist keine karten.json der Lernzentrale.");
+      localStorage.setItem(STORE + "-cards", JSON.stringify(data));
+      location.reload();
+    } catch (e) { $("support").textContent = "Laden fehlgeschlagen: " + e.message; }
+  };
+  if (EMBEDDED.cards.length) $("file").closest(".row").hidden = true;
+  const subjects = [...new Set(DATA.cards.map((c) => c.subject))].sort();
+  $("subject").innerHTML = '<option value="*">Alle Fächer</option>' +
+    subjects.map((s) => `<option>${s.replace(/[<&>"]/g, "")}</option>`).join("");
+  $("subject").onchange = updateStats;
+  $("big").onclick = toggle;
+  $("reset").onclick = () => {
+    if (confirm("Lernstand auf diesem Handy wirklich löschen?")) { progress = {}; save(); updateStats(); }
+  };
+  try {
+    const prefs = JSON.parse(localStorage.getItem(STORE + "-prefs") || "{}");
+    for (const k of ["subject", "limit", "mode", "pause"]) if (prefs[k] != null && $(k)) $(k).value = prefs[k];
+    if (!$("subject").value) $("subject").value = "*";
+  } catch (e) {}
+  for (const k of ["subject", "limit", "mode", "pause"]) $(k).addEventListener("change", () => {
+    try { localStorage.setItem(STORE + "-prefs", JSON.stringify(
+      Object.fromEntries(["subject", "limit", "mode", "pause"].map((x) => [x, $(x).value])))); } catch (e) {}
+  });
+
+  $("meta").textContent = `${DATA.cards.length} Karten` + (DATA.generated ? ` · Stand ${DATA.generated}` : "");
+  const warn = [];
+  if (!synth) warn.push("Dieser Browser kann nicht vorlesen.");
+  if (!Rec) warn.push("Dieser Browser kann keine Sprache erkennen, es geht nur der Modus „Nur zuhören“.");
+  if (!DATA.cards.length) { warn.push("Noch keine Karten. Unten karten.json laden (am PC mit auto_lernen.bat erzeugt)."); $("big").disabled = true; }
+  $("support").textContent = warn.join(" ");
+  updateStats();
+
+  // Für automatische Tests
+  window.__autoLernen = { matchScore, keywords, isCmd, CMD, progress: () => progress };
+})();
+</script>
+</body>
+</html>
